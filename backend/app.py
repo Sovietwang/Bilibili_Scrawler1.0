@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
+from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
@@ -24,18 +25,23 @@ def get_video_info(bvid):
         if not data:
             return None, "未找到视频信息"
 
+        pubdate = data.get("pubdate", "")
+        if pubdate:
+            pubdate = datetime.fromtimestamp(pubdate).strftime("%Y-%m-%d")
+
+
         # 提取视频信息
-        video_info = {
-            "标题": data.get("title"),
-            "播放量": data.get("stat", {}).get("view"),
-            "UP主": data.get("owner", {}).get("name"),
-            "点赞数": data.get("stat", {}).get("like"),
-            "投币数": data.get("stat", {}).get("coin"),
-            "收藏数": data.get("stat", {}).get("favorite"),
-            "视频简介": data.get("desc"),
-            "视频时长(秒)": data.get("duration"),
-            "发布时间": data.get("pubdate"),
-        }
+        video_info = [
+            {"key": "封面", "value": data.get("pic", "")},
+            {"key": "UP主", "value": data.get("owner", {}).get("name", "")},
+            {"key": "播放量", "value": data.get("stat", {}).get("view", "")},
+            {"key": "点赞数", "value": data.get("stat", {}).get("like", "")},
+            {"key": "投币数", "value": data.get("stat", {}).get("coin", "")},
+            {"key": "收藏数", "value": data.get("stat", {}).get("favorite", "")},
+            {"key": "视频简介", "value": data.get("desc", "")},
+            {"key": "视频时长(秒)", "value": data.get("duration", "")},
+            {"key": "发布时间", "value": pubdate},
+        ]
         return video_info, None
     except requests.exceptions.RequestException as e:
         return None, f"请求失败: {e}"
@@ -54,6 +60,7 @@ def crawl():
 
     # 返回结果
     return jsonify({"video_info": video_info})
+
 
 if __name__ == "__main__":
     app.run(debug=True)
