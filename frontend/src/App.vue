@@ -50,7 +50,7 @@ export default {
       this.error = "";
 
       try {
-        const response = await fetch("http://127.0.0.1:5000/crawl", {
+        const response = await fetch("http://8.156.67.199:5001/crawl", {
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",
