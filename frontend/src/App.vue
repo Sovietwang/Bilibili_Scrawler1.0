@@ -3,7 +3,7 @@
     <h1>B站视频助手</h1>
     <div class="input-container">
       
-      <input v-model="bvid" placeholder="请输入视频BV号" />
+      <input v-model="bvid" placeholder="请输入视频BV号或视频链接" />
       <button @click="startCrawl">开始</button>
     </div>
     <div v-if="loading" class="loading">加载中...</div>
@@ -50,7 +50,7 @@ export default {
       this.error = "";
 
       try {
-        const response = await fetch("http://8.156.67.199:5001/crawl", {
+        const response = await fetch("http://127.0.0.1:5000/crawl", {
           method: "POST",
           headers: {
             "Content-Type": "application/x-www-form-urlencoded",

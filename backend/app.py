@@ -7,6 +7,11 @@ from datetime import datetime
 app = Flask(__name__)
 CORS(app)
 
+def extract_bvid(url_or_bvid):
+    bvid_pattern = re.compile(r"(BV[0-9A-Za-z]{10})")
+    match = bvid_pattern.search(url_or_bvid)
+    return match.group(0) if match else None
+
 def seconds_to_minutes(seconds):
     minutes = seconds // 60
     seconds = seconds % 60
@@ -62,13 +67,11 @@ def crawl():
     if request.method == "GET":
         return jsonify({"message": "后端运行成功！请使用 POST 请求提交 BV 号以获取视频信息。"}), 200
 
-    bvid = request.form.get("bvid")
-    if not bvid:
-        return jsonify({"error": "请输入视频BV号！"}), 400
+    input = request.form.get("bvid","").strip()
 
-    # 校验BV号格式
-    if not re.match(r"^BV[a-zA-Z0-9]{10}$", bvid):
-        return jsonify({"error": "无效的BV号格式！"}), 400
+    bvid = extract_bvid(input)
+    if not bvid:
+        return jsonify({"error":"无效的BV号链接"}),400
 
     # 获取视频信息
     video_info, error = get_video_info(bvid)
