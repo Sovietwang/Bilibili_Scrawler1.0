@@ -1,76 +1,22 @@
 <template>
   <div id="app">
-    <h1>B站视频助手</h1>
-    <div class="input-container">
-      
-      <input v-model="bvid" placeholder="请输入视频BV号或视频链接" />
-      <button @click="startCrawl">开始</button>
-    </div>
-    <div v-if="loading" class="loading">加载中...</div>
-    <div v-if="error" class="error">{{ error }}</div>
-    <div v-if="videoInfo" class="result">
-      <h2>视频信息</h2>
-      <ul>
-        <li v-for="(item, index) in videoInfo" :key="index">
-          <span v-if="item.key === '封面'">
-            <img
-              :src="item.value"
-              alt="封面"
-              style="max-width: 100%; height: auto;"
-              
-            />
-          </span>
-          <span v-else>
-            <strong>{{ item.key }}:</strong> {{ item.value }}
-          </span>
-        </li>
-      </ul>
+    <!-- 路由视图 -->
+    <keep-alive>
+      <router-view></router-view>
+    </keep-alive>
+
+    <!-- 底部导航栏 -->
+    <div class="bottom-nav">
+      <router-link to="/crawler" class="nav-item">数据爬取</router-link>
+      <router-link to="/history" class="nav-item">历史记录</router-link>
+      <router-link to="/profile" class="nav-item">个人信息</router-link>
     </div>
   </div>
 </template>
 
 <script>
 export default {
-  data() {
-    return {
-      bvid: "",
-      videoInfo: null,
-      loading: false,
-      error: "",
-    };
-  },
-  methods: {
-    async startCrawl() {
-      if (!this.bvid) {
-        this.error = "请输入视频BV号！";
-        return;
-      }
-
-      this.loading = true;
-      this.error = "";
-
-      try {
-        const response = await fetch("http://127.0.0.1:5000/crawl", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: `bvid=${this.bvid}`,
-        });
-
-        const data = await response.json();
-        if (data.error) {
-          this.error = data.error;
-        } else {
-          this.videoInfo = data.video_info;
-        }
-      } catch (err) {
-        this.error = "请求失败：" + err.message;
-      } finally {
-        this.loading = false;
-      }
-    },
-  },
+  name: "App",
 };
 </script>
 
@@ -80,46 +26,34 @@ export default {
   max-width: 800px;
   margin: 0 auto;
   padding: 20px;
+  padding-bottom: 60px; /* 为底部导航栏留出空间 */
   display: flex;
   flex-direction: column;
+
 }
 
-.input-container {
-  
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #f8f9fa;
   display: flex;
-  gap:20px;
-  flex-direction: column;
-  align-items: center;
+  justify-content: space-around;
+  padding: 10px 0;
+  border-top: 1px solid #ddd;
+  max-width: 600px;
+  margin: 0 auto;
 }
 
-input {
-  width: 300px;
-  padding: 8px;
+.nav-item {
+  text-decoration: none;
+  color: #333;
   font-size: 16px;
 }
 
-button {
-  padding: 8px 16px;
-  font-size: 16px;
-  cursor: pointer;
-}
-
-.loading,
-.error {
-  margin-top: 20px;
-  color: red;
-}
-
-.result {
- 
-}
-
-ul {
-  list-style-type: none;
-  padding: 0;
-}
-
-li {
-  margin-bottom: 10px;
+.nav-item.router-link-exact-active {
+  color: #007bff;
+  font-weight: bold;
 }
 </style>

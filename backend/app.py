@@ -2,10 +2,93 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import re
+import sqlite3
 from datetime import datetime
 
 app = Flask(__name__)
 CORS(app)
+
+DATABASE="Bilibili.db"
+
+def init_db():
+    """初始化数据库"""
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+        # 创建 videos 表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS videos (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bvid TEXT UNIQUE NOT NULL,
+                title TEXT,
+                up_name TEXT,
+                cover_url TEXT,
+                view_count INTEGER,
+                like_count INTEGER,
+                coin_count INTEGER,
+                favorite_count INTEGER,
+                description TEXT,
+                duration TEXT,
+                pubdate TEXT
+            )
+        """)
+        # 创建 query_history 表
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS query_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                bvid TEXT NOT NULL,
+                query_time TEXT NOT NULL,
+                FOREIGN KEY (bvid) REFERENCES videos (bvid)
+            )
+        """)
+        conn.commit()
+
+def save_video_info(bvid, video_info):
+    """保存视频信息到数据库"""
+    video_dict = {item["key"]: item["value"] for item in video_info}
+
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT OR REPLACE INTO videos (
+                bvid, title, up_name, cover_url, view_count, like_count,
+                coin_count, favorite_count, description, duration, pubdate
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """, (
+            bvid,
+            video_dict.get("标题", ""),
+            video_dict.get("UP主", ""),
+            video_dict.get("封面", ""),
+            video_dict.get("播放量", 0),
+            video_dict.get("点赞数", 0),
+            video_dict.get("投币数", 0),
+            video_dict.get("收藏数", 0),
+            video_dict.get("视频简介", ""),
+            video_dict.get("视频时长", ""),
+            video_dict.get("发布时间", "")
+        ))
+        conn.commit()
+
+def save_query_history(bvid):
+    """保存查询历史记录"""
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO query_history (bvid, query_time)
+            VALUES (?, ?)
+        """, (bvid, datetime.now().isoformat()))
+        conn.commit()
+
+def get_query_history():
+    """获取查询历史记录"""
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT bvid, query_time FROM query_history
+            ORDER BY query_time DESC
+            LIMIT 100
+        """)
+        history = cursor.fetchall()
+        return [{"bvid": item[0], "query_time": item[1]} for item in history]
 
 def extract_bvid(url_or_bvid):
     bvid_pattern = re.compile(r"(BV[0-9A-Za-z]{10})")
@@ -78,9 +161,18 @@ def crawl():
     if error:
         return jsonify({"error": error}), 500
 
+    save_video_info(bvid, video_info)
+    save_query_history(bvid)
+
     # 返回结果
     return jsonify({"video_info": video_info})
 
+@app.route("/history")
+def history():
+    """获取查询历史记录"""
+    history = get_query_history()
+    return jsonify({"history": history})
 
 if __name__ == "__main__":
+    init_db()
     app.run(debug=True)

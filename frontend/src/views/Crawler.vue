@@ -1,0 +1,130 @@
+<template>
+  <div class="crawler-page">
+    <h1>数据爬取</h1>
+    <div class="input-container">
+      <input v-model="bvid" placeholder="请输入视频BV号或链接" />
+      <button @click="startCrawl">开始爬取</button>
+    </div>
+    <div v-if="loading" class="loading">加载中...</div>
+    <div v-if="error" class="error">{{ error }}</div>
+    <div v-if="videoInfo.length > 0" class="result">
+      <h2>视频信息</h2>
+      <ul>
+        <li v-for="(item, index) in videoInfo" :key="index">
+          <span v-if="item.key === '封面'">
+            <img
+              :src="item.value"
+              alt="封面"
+              style="max-width: 100%; height: auto;"
+              
+            />
+          </span>
+          <span v-else>
+            <strong>{{ item.key }}:</strong> {{ item.value }}
+          </span>
+        </li>
+      </ul>
+    </div>
+  </div>
+</template>
+
+<script>
+export default {
+  data() {
+    return {
+      bvid: "",
+      videoInfo: JSON.parse(localStorage.getItem("vedioInfo")) || [],
+      loading: false,
+      error: "",
+    };
+  },
+  methods: {
+    async startCrawl() {
+      if (!this.bvid) {
+        this.error = "请输入视频BV号或链接！";
+        return;
+      }
+
+      this.loading = true;
+      this.error = "";
+
+      try {
+        const response = await fetch("http://127.0.0.1:5000/crawl", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/x-www-form-urlencoded",
+          },
+          body: `bvid=${this.bvid}`,
+        });
+
+        const data = await response.json();
+        if (data.error) {
+          this.error = data.error;
+        } else {
+          this.videoInfo = data.video_info;
+          localStorage.setItem("lastVideoInfo", JSON.stringify(data.video_info));
+        }
+      } catch (err) {
+        this.error = "请求失败：" + err.message;
+      } finally {
+        this.loading = false;
+      }
+    },
+  },
+  watch: {
+    "$route.query.bvid": {
+      immediate: true,
+      handler(newBvid) {
+        if (newBvid) {
+          this.bvid = newBvid;
+          this.startCrawl();
+        }
+      },
+    },
+  },
+  mounted() {
+    // 从 localStorage 恢复数据
+    const savedVideoInfo = JSON.parse(localStorage.getItem("videoInfo"));
+    if (savedVideoInfo) {
+      this.videoInfo = savedVideoInfo;
+    }
+  },
+};
+</script>
+
+<style scoped>
+.crawler-page {
+  font-family: Arial, sans-serif;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.input-container {
+  
+  display: flex;
+  gap:20px;
+  flex-direction: column;
+  align-items: center;
+}
+input {
+  width: 300px;
+  padding: 8px;
+  font-size: 16px;
+}
+button {
+  padding: 8px 16px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.result ul {
+  list-style-type: none; /* 移除 <li> 的默认标记 */
+  padding: 0; /* 移除默认的内边距 */
+}
+
+.result li {
+  margin-bottom: 10px; /* 调整列表项间距 */
+}
+</style>
