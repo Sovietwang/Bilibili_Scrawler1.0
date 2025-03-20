@@ -167,6 +167,24 @@ def crawl():
     # 返回结果
     return jsonify({"video_info": video_info})
 
+@app.route("/history/delete", methods=["DELETE"])
+def delete_history():
+    """清空历史记录"""
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM query_history")
+        conn.commit()
+    return jsonify({"message": "历史记录已清空"}), 200
+
+@app.route("/history/delete/<bvid>", methods=["DELETE"])
+def delete_single_history(bvid):
+    """删除单条历史记录"""
+    with sqlite3.connect(DATABASE) as conn:
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM query_history WHERE bvid = ?", (bvid,))
+        conn.commit()
+    return jsonify({"message": f"已删除 BV 号为 {bvid} 的历史记录"}), 200
+
 @app.route("/history")
 def history():
     """获取查询历史记录"""

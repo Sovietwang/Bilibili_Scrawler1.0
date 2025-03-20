@@ -2,7 +2,7 @@
   <div id="app">
     <!-- 路由视图 -->
     <keep-alive>
-      <router-view></router-view>
+      <router-view style="max-width: 600px; width: 100%;"></router-view>
     </keep-alive>
 
     <!-- 底部导航栏 -->
@@ -23,13 +23,13 @@ export default {
 <style>
 #app {
   font-family: Arial, sans-serif;
-  max-width: 800px;
+  max-width: 100%; /* 确保 app 容器宽度不受限制 */
+  min-width: 600px; /* 确保最小宽度为 600px */
   margin: 0 auto;
   padding: 20px;
-  padding-bottom: 60px; /* 为底部导航栏留出空间 */
+  padding-bottom: 80px; /* 为底部导航栏留出空间 */
   display: flex;
   flex-direction: column;
-
 }
 
 .bottom-nav {
