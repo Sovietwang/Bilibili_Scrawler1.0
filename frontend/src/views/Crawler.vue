@@ -19,6 +19,9 @@
               
             />
           </span>
+          <span v-else-if="item.link">
+            <a :href="item.link" target="_blank" class="link">{{ item.value }}</a>
+          </span>
           <span v-else>
             <strong>{{ item.key }}:</strong> {{ item.value }}
           </span>
@@ -204,5 +207,13 @@ button:hover {
   height: auto;
   border-radius: 4px;
   margin-bottom: 8px;
+}
+.link {
+  color: #007bff;
+  text-decoration: none;
+}
+
+.link:hover {
+  text-decoration: underline;
 }
 </style>

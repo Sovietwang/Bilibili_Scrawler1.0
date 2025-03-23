@@ -2,6 +2,7 @@ from flask import Flask, request, jsonify
 from flask_cors import CORS
 import requests
 import re
+import os
 import pymysql
 from datetime import datetime
 
@@ -10,10 +11,10 @@ CORS(app)
 
 # MySQL 连接配置
 MYSQL_CONFIG = {
-    "host": "localhost",  # MySQL 服务器地址
-    "user": "bili_user",  # 用户名
-    "password": "Li114514",  # 密码
-    "database": "bili",  # 数据库名
+    "host": os.getenv("DB_HOST", "localhost"),  # MySQL 主机名
+    "user": os.getenv("DB_USER", "bili_user"),  # MySQL 用户名
+    "password": os.getenv("DB_PASSWORD", "Li114514"),  # MySQL 密码
+    "database": os.getenv("DB_NAME", "bili"),  # MySQL 数据库名
     "cursorclass": pymysql.cursors.DictCursor  # 返回字典格式的结果
 }
 
@@ -149,15 +150,21 @@ def get_video_info(bvid):
         if pubdate:
             pubdate = datetime.fromtimestamp(pubdate).strftime("%Y-%m-%d")
 
+        # 获取视频链接和 UP 主主页链接
+        video_url = f"https://www.bilibili.com/video/{bvid}"
+        up_mid = data.get("owner", {}).get("mid", "")
+        up_url = f"https://space.bilibili.com/{up_mid}"
 
         # 提取视频信息
         video_info = [
             {"key": "封面", "value": data.get("pic", "")},
-            {"key": "UP主", "value": data.get("owner", {}).get("name", "")},
+            {"key": "标题", "value": data.get("title", ""), "link": video_url},
+            {"key": "UP主", "value": data.get("owner", {}).get("name", ""),"link":up_url},
             {"key": "播放量", "value": data.get("stat", {}).get("view", "")},
             {"key": "点赞数", "value": data.get("stat", {}).get("like", "")},
             {"key": "投币数", "value": data.get("stat", {}).get("coin", "")},
             {"key": "收藏数", "value": data.get("stat", {}).get("favorite", "")},
+            {"key": "转发量", "value": data.get("stat", {}).get("share", "")},
             {"key": "视频简介", "value": data.get("desc", "")},
             {"key": "视频时长", "value": seconds_to_minutes(data.get("duration", ""))},
             {"key": "发布时间", "value": pubdate},

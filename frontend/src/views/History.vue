@@ -7,8 +7,8 @@
     </div>
     <div v-if="historyLoading" class="loading">加载中...</div>
     <ul v-else>
-      <li v-for="(item, index) in history" :key="index" @click="goToCrawler(item.bvid)">
-        <span class="bvid">{{ item.bvid }}</span>
+      <li v-for="(item, index) in history" :key="index">
+        <span class="bvid" @click="goToCrawler(item.bvid)">{{ item.bvid }}</span>
         <span class="timestamp">{{ formatDate(item.query_time) }}</span>
         <button @click="deleteSingleHistory(item.bvid)" class="delete-single">删除</button>
       </li>
