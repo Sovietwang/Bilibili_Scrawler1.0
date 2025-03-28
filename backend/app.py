@@ -214,12 +214,36 @@ def delete_single_history(bvid):
         conn.commit()
     return jsonify({"message": f"已删除 BV 号为 {bvid} 的历史记录"}), 200
 
+
 @app.route("/history")
 def history():
-    """获取查询历史记录"""
-    history = get_query_history()
-    return jsonify({"history": history})
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 20, type=int)
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            # 获取总数
+            cursor.execute("SELECT COUNT(*) as total FROM query_history")
+            total = cursor.fetchone()["total"]
+
+            # 获取分页数据
+            cursor.execute("""
+                SELECT bvid, query_time FROM query_history
+                ORDER BY query_time DESC
+                LIMIT %s OFFSET %s
+            """, (per_page, (page - 1) * per_page))
+            history = cursor.fetchall()
+
+    return jsonify({
+        "history": history,
+        "pagination": {
+            "page": page,
+            "per_page": per_page,
+            "total": total,
+            "pages": (total + per_page - 1) // per_page
+        }
+    })
 
 if __name__ == "__main__":
     init_db()
-    app.run(debug=True)
+    app.run(host="0.0.0.0", port=5000,debug=True)
