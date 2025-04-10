@@ -26,6 +26,16 @@ def init_db():
     """初始化数据库"""
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
+            # 创建 users 表
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS users (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    username VARCHAR(50) UNIQUE NOT NULL,
+                    password VARCHAR(100) NOT NULL,
+                    avatar VARCHAR(200) DEFAULT 'default_avatar.png',
+                    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
             # 创建 videos 表
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS videos (
@@ -40,7 +50,9 @@ def init_db():
                     favorite_count INT,
                     description TEXT,
                     duration TEXT,
-                    pubdate TEXT
+                    pubdate TEXT,
+                    user_id INT DEFAULT NULL
+                    
                 )
             """)
             # 创建 query_history 表
@@ -49,22 +61,46 @@ def init_db():
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     bvid VARCHAR(20) NOT NULL,
                     query_time DATETIME NOT NULL,
+                    user_id INT DEFAULT NULL,
                     FOREIGN KEY (bvid) REFERENCES videos (bvid)
                 )
             """)
+
+        conn.commit()
+        
+# 用户
+def register_user(username, password):
+    """注册新用户"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                INSERT INTO users (username, password)
+                VALUES (%s, %s)
+            """, (username, password))
         conn.commit()
 
-def save_video_info(bvid, video_info):
+def login_user(username, password):
+    """用户登录"""
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, username, avatar FROM users
+                WHERE username = %s AND password = %s
+            """, (username, password))
+            return cursor.fetchone()
+
+def save_video_info(bvid, video_info, user_id=None):
     """保存视频信息到数据库"""
     video_dict = {item["key"]: item["value"] for item in video_info}
 
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
+            # 修改为正确的SQL语句，包含user_id字段
+            sql = """
                 INSERT INTO videos (
                     bvid, title, up_name, cover_url, view_count, like_count,
-                    coin_count, favorite_count, description, duration, pubdate
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    coin_count, favorite_count, description, duration, pubdate, user_id
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
                     title = VALUES(title),
                     up_name = VALUES(up_name),
@@ -75,8 +111,10 @@ def save_video_info(bvid, video_info):
                     favorite_count = VALUES(favorite_count),
                     description = VALUES(description),
                     duration = VALUES(duration),
-                    pubdate = VALUES(pubdate)
-            """, (
+                    pubdate = VALUES(pubdate),
+                    user_id = VALUES(user_id)
+            """
+            params = (
                 bvid,
                 video_dict.get("标题", ""),
                 video_dict.get("UP主", ""),
@@ -87,30 +125,42 @@ def save_video_info(bvid, video_info):
                 video_dict.get("收藏数", 0),
                 video_dict.get("视频简介", ""),
                 video_dict.get("视频时长", ""),
-                video_dict.get("发布时间", "")
-            ))
+                video_dict.get("发布时间", ""),
+                user_id  # 添加user_id参数
+            )
+            cursor.execute(sql, params)
         conn.commit()
 
-def save_query_history(bvid):
+def save_query_history(bvid, user_id=None):
     """保存查询历史记录"""
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                INSERT INTO query_history (bvid, query_time)
-                VALUES (%s, %s)
-            """, (bvid, datetime.now().isoformat()))
+                INSERT INTO query_history (bvid, query_time,user_id)
+                VALUES (%s, %s, %s)
+            """, (bvid, datetime.now().isoformat(), user_id))
         conn.commit()
 
-def get_query_history():
+def get_query_history(user_id=None):
     """获取查询历史记录"""
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("""
-                SELECT bvid, query_time FROM query_history
-                ORDER BY query_time DESC
-                LIMIT 100
-            """)
+            if user_id is not None:
+                cursor.execute("""
+                    SELECT bvid, query_time FROM query_history
+                    WHERE user_id = %s
+                    ORDER BY query_time DESC
+                    LIMIT 100
+                """, (user_id,))
+            else:
+                cursor.execute("""
+                    SELECT bvid, query_time FROM query_history
+                    WHERE user_id IS NULL
+                    ORDER BY query_time DESC
+                    LIMIT 100
+                """)
             history = cursor.fetchall()
+
             return [{"bvid": item["bvid"], "query_time": item["query_time"]} for item in history]
 
 def extract_bvid(url_or_bvid):
@@ -173,6 +223,44 @@ def get_video_info(bvid):
     except requests.exceptions.RequestException as e:
         return None, f"请求失败: {e}"
 
+
+# 用户相关路由
+@app.route("/register", methods=["POST"])
+def register():
+    """用户注册"""
+    username = request.form.get("username")
+    password = request.form.get("password")
+
+    if not username or not password:
+        return jsonify({"error": "用户名和密码不能为空"}), 400
+
+    try:
+        register_user(username, password)
+        return jsonify({"message": "注册成功"}), 201
+    except pymysql.err.IntegrityError:
+        return jsonify({"error": "用户名已存在"}), 400
+
+
+@app.route("/login", methods=["POST"])
+def login():
+    """用户登录"""
+    username = request.form.get("username")
+    password = request.form.get("password")
+
+    user = login_user(username, password)
+    if user:
+        return jsonify({
+            "message": "登录成功",
+            "user": {
+                "id": user["id"],
+                "username": user["username"],
+                "avatar": user["avatar"]
+            }
+        }), 200
+    else:
+        return jsonify({"error": "用户名或密码错误"}), 401
+
+
 @app.route("/crawl", methods=["POST","GET"])
 def crawl():
     """爬取视频信息"""
@@ -180,6 +268,7 @@ def crawl():
         return jsonify({"message": "后端运行成功！请使用 POST 请求提交 BV 号以获取视频信息。"}), 200
 
     input = request.form.get("bvid","").strip()
+    user_id = request.form.get("user_id")  # 获取user_id
 
     bvid = extract_bvid(input)
     if not bvid:
@@ -190,27 +279,34 @@ def crawl():
     if error:
         return jsonify({"error": error}), 500
 
-    save_video_info(bvid, video_info)
-    save_query_history(bvid)
-
+    save_video_info(bvid, video_info, user_id)
+    save_query_history(bvid, user_id)
     # 返回结果
     return jsonify({"video_info": video_info})
 
 @app.route("/history/delete", methods=["DELETE"])
 def delete_history():
     """清空历史记录"""
+    user_id = request.args.get("user_id")
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM query_history")
+            if user_id:
+                cursor.execute("DELETE FROM query_history WHERE user_id = %s", (user_id,))
+            else:
+                cursor.execute("DELETE FROM query_history WHERE user_id IS NULL")
         conn.commit()
     return jsonify({"message": "历史记录已清空"}), 200
 
 @app.route("/history/delete/<bvid>", methods=["DELETE"])
 def delete_single_history(bvid):
     """删除单条历史记录"""
+    user_id = request.args.get("user_id")
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("DELETE FROM query_history WHERE bvid = %s", (bvid,))
+            if user_id:
+                cursor.execute("DELETE FROM query_history WHERE bvid = %s AND user_id = %s", (bvid, user_id))
+            else:
+                cursor.execute("DELETE FROM query_history WHERE bvid = %s AND user_id IS NULL", (bvid,))
         conn.commit()
     return jsonify({"message": f"已删除 BV 号为 {bvid} 的历史记录"}), 200
 
@@ -219,19 +315,31 @@ def delete_single_history(bvid):
 def history():
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 20, type=int)
+    user_id = request.args.get("user_id",type=int)
 
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
-            # 获取总数
-            cursor.execute("SELECT COUNT(*) as total FROM query_history")
+            if user_id:
+                cursor.execute("SELECT COUNT(*) as total FROM query_history WHERE user_id = %s", (user_id,))
+            else:
+                cursor.execute("SELECT COUNT(*) as total FROM query_history WHERE user_id IS NULL")
             total = cursor.fetchone()["total"]
 
-            # 获取分页数据
-            cursor.execute("""
-                SELECT bvid, query_time FROM query_history
-                ORDER BY query_time DESC
-                LIMIT %s OFFSET %s
-            """, (per_page, (page - 1) * per_page))
+            # 获取分页数据 (添加用户过滤)
+            if user_id:
+                cursor.execute("""
+                                SELECT bvid, query_time FROM query_history
+                                WHERE user_id = %s
+                                ORDER BY query_time DESC
+                                LIMIT %s OFFSET %s
+                            """, (user_id, per_page, (page - 1) * per_page))
+            else:
+                cursor.execute("""
+                                SELECT bvid, query_time FROM query_history
+                                WHERE user_id IS NULL
+                                ORDER BY query_time DESC
+                                LIMIT %s OFFSET %s
+                            """, (per_page, (page - 1) * per_page))
             history = cursor.fetchall()
 
     return jsonify({

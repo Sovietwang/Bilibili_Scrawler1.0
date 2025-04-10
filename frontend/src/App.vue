@@ -17,6 +17,11 @@
 <script>
 export default {
   name: "App",
+  computed: {
+    user() {
+      return JSON.parse(localStorage.getItem('user'));
+    }
+  }
 };
 </script>
 

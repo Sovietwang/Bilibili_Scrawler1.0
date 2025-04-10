@@ -12,12 +12,7 @@
       <ul>
         <li v-for="(item, index) in videoInfo" :key="index">
           <span v-if="item.key === '封面'">
-            <img
-              :src="item.value"
-              alt="封面"
-              style="max-width: 100%; height: auto;"
-              
-            />
+            <img :src="item.value" alt="封面" style="max-width: 100%; height: auto;" />
           </span>
           <span v-else-if="item.link">
             <a :href="item.link" target="_blank" class="link">{{ item.value }}</a>
@@ -72,12 +67,16 @@ export default {
       this.error = "";
 
       try {
+        const user = JSON.parse(localStorage.getItem('user'));
+        const formData = new FormData();
+        formData.append('bvid', this.bvid);
+        if (user) {
+          formData.append('user_id', user.id);
+        }
+
         const response = await fetch("http://127.0.0.1:5000/crawl", {
           method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: `bvid=${this.bvid}`,
+          body: formData
         });
 
         const data = await response.json();
@@ -85,19 +84,20 @@ export default {
           this.error = data.error;
         } else {
           this.videoInfo = data.video_info;
-          // 保存到 localStorage
           localStorage.setItem("currentVideoInfo", JSON.stringify(data.video_info));
         }
       } catch (err) {
-        this.error = "请求失败：" + err.message;
+        this.error = "请求失败：" + (err.message || "请检查网络连接");
+        console.error("爬取失败:", err);
       } finally {
         this.loading = false;
       }
 
-      
-    },
+
+
+    }
   },
-  
+
   mounted() {
     // 从 localStorage 加载上次查询结果
     const savedVideoInfo = localStorage.getItem("currentVideoInfo");
@@ -117,14 +117,18 @@ export default {
 <style scoped>
 .crawler-page {
   font-family: Arial, sans-serif;
-  max-width: 600px; /* 最大宽度 */
-  width: 100%; /* 确保宽度占满父容器 */
-  margin: 0 auto; /* 居中 */
+  max-width: 600px;
+  /* 最大宽度 */
+  width: 100%;
+  /* 确保宽度占满父容器 */
+  margin: 0 auto;
+  /* 居中 */
   padding: 20px;
   background-color: #fff;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box; /* 确保 padding 不会影响宽度 */
+  box-sizing: border-box;
+  /* 确保 padding 不会影响宽度 */
 }
 
 .input-container {
@@ -208,6 +212,7 @@ button:hover {
   border-radius: 4px;
   margin-bottom: 8px;
 }
+
 .link {
   color: #007bff;
   text-decoration: none;
