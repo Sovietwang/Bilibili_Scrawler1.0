@@ -1,5 +1,6 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
+from flask import send_from_directory
 import requests
 import re
 import os
@@ -32,7 +33,7 @@ def init_db():
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     username VARCHAR(50) UNIQUE NOT NULL,
                     password VARCHAR(100) NOT NULL,
-                    avatar VARCHAR(200) DEFAULT 'default_avatar.png',
+                    avatar VARCHAR(200) DEFAULT '/default_avatar.png',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -223,6 +224,10 @@ def get_video_info(bvid):
     except requests.exceptions.RequestException as e:
         return None, f"请求失败: {e}"
 
+# 添加静态文件路由
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory('static', filename)
 
 # 用户相关路由
 @app.route("/register", methods=["POST"])
@@ -260,6 +265,104 @@ def login():
     else:
         return jsonify({"error": "用户名或密码错误"}), 401
 
+
+@app.route("/user/update", methods=["PUT"])
+def update_user():
+    """更新用户信息"""
+    data = request.get_json()  # 修改为获取JSON数据
+    user_id = data.get("user_id")
+    new_username = data.get("username")
+    new_password = data.get("password")
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            # 检查用户名是否已存在
+            if new_username:
+                cursor.execute("""
+                    SELECT id FROM users 
+                    WHERE username = %s AND id != %s
+                """, (new_username, user_id))
+                if cursor.fetchone():
+                    return jsonify({"error": "用户名已存在"}), 400
+
+                cursor.execute("""
+                    UPDATE users SET username = %s 
+                    WHERE id = %s
+                """, (new_username, user_id))
+
+            # 更新密码
+            if new_password:
+                cursor.execute("""
+                    UPDATE users SET password = %s 
+                    WHERE id = %s
+                """, (new_password, user_id))
+
+            # 获取更新后的用户信息
+            cursor.execute("""
+                SELECT id, username, avatar FROM users
+                WHERE id = %s
+            """, (user_id,))
+            user = cursor.fetchone()
+
+        conn.commit()
+
+    return jsonify({
+        "message": "更新成功",
+        "user": user
+    })
+
+
+@app.route("/user/avatar", methods=["POST"])
+def upload_avatar():
+    """上传用户头像"""
+    if 'avatar' not in request.files:
+        return jsonify({"error": "未上传文件"}), 400
+
+    file = request.files['avatar']
+    user_id = request.form.get('user_id')
+
+    if file.filename == '':
+        return jsonify({"error": "未选择文件"}), 400
+
+    # 确保static/avatars目录存在
+    upload_folder = os.path.join(app.root_path, 'static', 'avatars')
+    os.makedirs(upload_folder, exist_ok=True)
+
+    if file and allowed_file(file.filename):
+        # 生成唯一文件名
+        ext = file.filename.rsplit('.', 1)[1].lower()
+        filename = f"avatar_{user_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.{ext}"
+        save_path = os.path.join(upload_folder, filename)
+
+        file.save(save_path)
+
+        # 更新数据库 - 使用绝对URL路径
+        avatar_url = f"http://127.0.0.1:5000/static/avatars/{filename}"
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    UPDATE users SET avatar = %s 
+                    WHERE id = %s
+                """, (avatar_url, user_id))
+                cursor.execute("""
+                    SELECT id, username, avatar FROM users
+                    WHERE id = %s
+                """, (user_id,))
+                user = cursor.fetchone()
+            conn.commit()
+
+        return jsonify({
+            "message": "头像上传成功",
+            "avatar_url": avatar_url,
+            "user": user
+        })
+    else:
+        return jsonify({"error": "只支持png, jpg, jpeg, gif格式"}), 400
+
+
+def allowed_file(filename):
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in {'png', 'jpg', 'jpeg', 'gif'}
 
 @app.route("/crawl", methods=["POST","GET"])
 def crawl():

@@ -51,6 +51,7 @@
   ## 🚀 快速部署
 
   ### 开发环境
+  
   ```bash
   # 克隆项目
   git clone https://github.com/yourname/bilibili-crawler.git
@@ -63,6 +64,13 @@
   cd frontend
   npm install
   
+
+###      线上预览
+
+​      项目github地址 [Sovietwang/Bilibili_Scrawler1.0](https://github.com/Sovietwang/Bilibili_Scrawler1.0)
+
+​       线上网站预览[B站助手](https://binqqing.fun/crawler)
+
 ## ⚖️ 法律合规声明
 
 ### 数据来源合法性
