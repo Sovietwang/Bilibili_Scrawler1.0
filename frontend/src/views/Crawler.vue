@@ -23,6 +23,49 @@
         </li>
       </ul>
     </div>
+    <!-- 在Crawler.vue的template中添加 -->
+    <div v-if="videoInfo" class="analysis-section">
+      <h2>评论分析</h2>
+      <button @click="analyzeComments" :disabled="analysisLoading">
+        {{ analysisLoading ? '分析中...' : '分析评论' }}
+      </button>
+
+      <div v-if="analysisError" class="error">{{ analysisError }}</div>
+
+      <div v-if="analysisResult" class="analysis-results">
+        <!-- 词云图 -->
+        <div class="wordcloud-container">
+          <h3>评论词云</h3>
+          <img :src="analysisResult.wordcloud" alt="词云图" class="wordcloud-img">
+        </div>
+
+        <!-- 情感分析 -->
+        <div class="sentiment-analysis">
+          <h3>情感分布</h3>
+          <div class="sentiment-stats">
+            <div class="sentiment-item positive">
+              <span>积极: {{ analysisResult.sentiment_dist.positive }}%</span>
+            </div>
+            <div class="sentiment-item neutral">
+              <span>中立: {{ analysisResult.sentiment_dist.neutral }}%</span>
+            </div>
+            <div class="sentiment-item negative">
+              <span>消极: {{ analysisResult.sentiment_dist.negative }}%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- 高频词 -->
+        <div class="top-words">
+          <h3>高频词汇</h3>
+          <div class="word-tags">
+            <span v-for="(word, index) in analysisResult.top_words" :key="index" class="word-tag">
+              {{ word[0] }} ({{ word[1] }})
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -34,6 +77,9 @@ export default {
       videoInfo: null,
       loading: false,
       error: "",
+      analysisResult: null,
+      analysisLoading: false,
+      analysisError: ""
     };
   },
 
@@ -92,10 +138,58 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
 
+    async analyzeComments() {
+      if (!this.videoInfo) {
+        this.analysisError = "请先获取视频信息";
+        return;
+      }
 
+      this.analysisLoading = true;
+      this.analysisError = "";
 
-    }
+      try {
+        // 1. 获取评论
+        const bvid = this.extractBvid(this.bvid);
+        const commentsResponse = await fetch(
+          `http://127.0.0.1:5000/comments?bvid=${bvid}&max_comments=100`
+        );
+        const commentsData = await commentsResponse.json();
+
+        if (commentsData.error || !commentsData.comments) {
+          throw new Error(commentsData.error || "无法获取评论");
+        }
+
+        // 2. 发送分析请求
+        const analysisResponse = await fetch("http://127.0.0.1:5000/analyze", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ comments: commentsData.comments }),
+        });
+
+        const analysisData = await analysisResponse.json();
+        if (analysisData.error) {
+          throw new Error(analysisData.error);
+        }
+
+        this.analysisResult = analysisData;
+      } catch (err) {
+        this.analysisError = "分析失败: " + err.message;
+        console.error("分析评论失败:", err);
+      } finally {
+        this.analysisLoading = false;
+      }
+    },
+
+    extractBvid(input) {
+      const bvidPattern = /(BV[0-9A-Za-z]{10})/;
+      const match = bvidPattern.exec(input);
+      return match ? match[0] : input;
+    },
+
   },
 
   mounted() {
@@ -220,5 +314,62 @@ button:hover {
 
 .link:hover {
   text-decoration: underline;
+}
+
+.analysis-section {
+  margin-top: 30px;
+  padding: 20px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+}
+
+.analysis-results {
+  margin-top: 20px;
+}
+
+.wordcloud-img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.sentiment-stats {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.sentiment-item {
+  padding: 8px 12px;
+  border-radius: 4px;
+  color: white;
+}
+
+.positive {
+  background-color: #52c41a;
+}
+
+.neutral {
+  background-color: #faad14;
+}
+
+.negative {
+  background-color: #ff4d4f;
+}
+
+.word-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.word-tag {
+  background-color: #e6f7ff;
+  border: 1px solid #91d5ff;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 14px;
 }
 </style>

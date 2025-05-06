@@ -6,6 +6,18 @@ import re
 import os
 import pymysql
 from datetime import datetime
+import jieba  # 用于中文分词
+from collections import Counter
+from wordcloud import WordCloud
+import matplotlib.pyplot as plt
+import io
+import base64
+import numpy as np
+import time
+from snownlp import SnowNLP  # 用于情感分析
+
+# 初始化jieba分词
+jieba.initialize()
 
 app = Flask(__name__)
 CORS(app)
@@ -223,6 +235,200 @@ def get_video_info(bvid):
         return video_info, None
     except requests.exceptions.RequestException as e:
         return None, f"请求失败: {e}"
+
+
+def get_video_comments(bvid, max_comments=100):
+    """获取视频评论 - 改进版"""
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0',
+        'Referer': f'https://www.bilibili.com/video/{bvid}',
+        'Origin': 'https://www.bilibili.com'
+    }
+
+    comments = []
+    try:
+        # 1. 首先获取视频aid(oid)
+        video_info_url = f'https://api.bilibili.com/x/web-interface/view?bvid={bvid}'
+        video_response = requests.get(video_info_url, headers=headers, timeout=10)
+        if video_response.status_code != 200:
+            return None, f"获取视频信息失败: {video_response.status_code}"
+
+        video_data = video_response.json()
+        if video_data.get('code') != 0:
+            return None, f"获取视频信息失败: {video_data.get('message')}"
+
+        aid = video_data['data']['aid']
+
+        # 2. 使用新API获取评论
+        page = 1
+        last_count = 0
+        while len(comments) < max_comments:
+            url = f'https://api.bilibili.com/x/v2/reply/main?next={page}&type=1&oid={aid}&mode=3'
+
+            try:
+                response = requests.get(url, headers=headers, timeout=10)
+                if response.status_code != 200:
+                    return None, f"获取评论失败: HTTP {response.status_code}"
+
+                data = response.json()
+                if data.get('code') != 0:
+                    return None, f"B站API错误: {data.get('message')}"
+
+                if not data.get('data') or not data['data'].get('replies'):
+                    break  # 没有更多评论
+
+                for comment in data['data']['replies']:
+                    comments.append(comment['content']['message'])
+                    if len(comments) >= max_comments:
+                        break
+
+                print(f"已获取 {len(comments)}/{max_comments} 条评论")
+
+                # 检查是否还有新评论
+                if last_count == len(comments):
+                    break
+                last_count = len(comments)
+
+                page += 1
+                time.sleep(0.5)  # 适当延迟防止被封
+
+            except Exception as e:
+                return None, f"获取评论出错: {str(e)}"
+
+        return comments[:max_comments], None
+
+    except Exception as e:
+        return None, f"获取评论失败: {str(e)}"
+
+
+def analyze_comments(comments):
+    """分析评论内容"""
+    if not comments:
+        return None, "没有评论可分析"
+
+    try:
+
+        # 获取绝对路径
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        stopwords_path = os.path.join(base_dir, 'resources', 'stopwords.txt')
+
+        # 1. 分词处理
+        all_text = ' '.join(comments)
+        words = jieba.lcut(all_text)
+
+        # 去除停用词和单字词
+        with open(stopwords_path, 'r', encoding='utf-8') as f:
+            stopwords = set([line.strip() for line in f])
+
+        words = [word for word in words if len(word) > 1 and word not in stopwords]
+
+        # 2. 词频统计
+        word_freq = Counter(words)
+        top_words = word_freq.most_common(50)
+
+        # 3. 情感分析
+        sentiments = []
+        for comment in comments:
+            try:
+                s = SnowNLP(comment)
+                sentiments.append(s.sentiments)
+            except:
+                continue
+
+        # 计算情感分布
+        positive = sum(1 for s in sentiments if s > 0.6)
+        neutral = sum(1 for s in sentiments if 0.4 <= s <= 0.6)
+        negative = sum(1 for s in sentiments if s < 0.4)
+        total = len(sentiments)
+
+        if total > 0:
+            sentiment_dist = {
+                'positive': round(positive / total * 100, 1),
+                'neutral': round(neutral / total * 100, 1),
+                'negative': round(negative / total * 100, 1)
+            }
+        else:
+            sentiment_dist = {'positive': 0, 'neutral': 0, 'negative': 0}
+
+        # 4. 生成词云图
+        try:
+            wordcloud_img = generate_wordcloud(word_freq)
+            if not wordcloud_img:
+                raise ValueError("generate_wordcloud返回了空值")
+        except Exception as e:
+            print(f"生成词云图失败: {str(e)}")
+            wordcloud_img = None
+
+        return {
+                   'top_words': top_words,
+                   'sentiment_dist': sentiment_dist,
+                   'wordcloud': wordcloud_img  # 可能为None
+               }, None
+
+    except Exception as e:
+        return None, f"分析评论失败: {str(e)}"
+
+
+def generate_wordcloud(word_freq):
+    """生成词云图并返回base64编码"""
+    try:
+        # 获取绝对路径
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        font_path = os.path.join(base_dir, "resources", "SimHei.ttf")
+
+        # 验证字体文件
+        if not os.path.exists(font_path):
+            raise FileNotFoundError(f"字体文件不存在: {font_path}")
+
+        # 验证词频数据
+        if not word_freq or len(word_freq) < 3:  # 至少需要3个词
+            raise ValueError("词频数据不足")
+
+        # 配置词云（兼容旧版Pillow）
+        wc = WordCloud(
+            font_path=font_path,
+            width=800,
+            height=600,
+            background_color="white",
+            max_words=200,
+            collocations=False,  # 禁用词组
+            prefer_horizontal=0.9  # 调整水平文本比例
+        )
+
+        # 生成词云
+        plt.switch_backend('Agg')  # 确保使用非交互式后端
+        plt.figure(figsize=(10, 8))
+
+        try:
+            wc.generate_from_frequencies(word_freq)
+            plt.imshow(wc, interpolation="bilinear")
+        except Exception as e:
+            # 备用方案：使用系统字体
+            print(f"使用指定字体失败，尝试系统默认字体: {e}")
+            wc = WordCloud(
+                width=800,
+                height=600,
+                background_color="white",
+                max_words=200
+            )
+            wc.generate_from_frequencies(word_freq)
+            plt.imshow(wc, interpolation="bilinear")
+
+        plt.axis("off")
+
+        # 转换为base64
+        img_buffer = io.BytesIO()
+        plt.savefig(img_buffer, format="png", dpi=120, bbox_inches="tight", pad_inches=0)
+        plt.close()
+
+        img_buffer.seek(0)
+        return f"data:image/png;base64,{base64.b64encode(img_buffer.getvalue()).decode('utf-8')}"
+
+    except Exception as e:
+        print(f"❌ 词云生成失败: {str(e)}")
+        # 返回透明占位图
+        return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII="
+
 
 # 添加静态文件路由
 @app.route('/static/<path:filename>')
@@ -454,6 +660,35 @@ def history():
             "pages": (total + per_page - 1) // per_page
         }
     })
+
+
+@app.route("/comments", methods=["GET"])
+def get_comments():
+    """获取视频评论"""
+    bvid = request.args.get("bvid")
+    if not bvid:
+        return jsonify({"error": "缺少BV号参数"}), 400
+
+    max_comments = request.args.get("max_comments", 100, type=int)
+    comments, error = get_video_comments(bvid, max_comments)
+    if error:
+        return jsonify({"error": error}), 500
+
+    return jsonify({"comments": comments})
+
+
+@app.route("/analyze", methods=["POST"])
+def analyze():
+    """分析评论"""
+    data = request.get_json()
+    if not data or 'comments' not in data:
+        return jsonify({"error": "缺少评论数据"}), 400
+
+    analysis_result, error = analyze_comments(data['comments'])
+    if error:
+        return jsonify({"error": error}), 500
+
+    return jsonify(analysis_result)
 
 if __name__ == "__main__":
     init_db()
