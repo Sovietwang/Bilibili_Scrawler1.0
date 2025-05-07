@@ -1,3 +1,4 @@
+import random
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 from flask import send_from_directory
@@ -15,12 +16,18 @@ import base64
 import numpy as np
 import time
 from snownlp import SnowNLP  # 用于情感分析
+#from fake_useragent import UserAgent #反爬欺骗
 
 # 初始化jieba分词
 jieba.initialize()
 
 app = Flask(__name__)
 CORS(app)
+
+#user_agents池
+USER_AGENTS = [
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0"
+]
 
 # MySQL 连接配置
 MYSQL_CONFIG = {
@@ -192,20 +199,20 @@ def get_video_info(bvid):
     info_url = f"{BASE_URL}?bvid={bvid}"
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+        "User-Agent": get_random_user_agent(),
         "Referer": "https://www.bilibili.com/",
     }
 
     try:
-        response = requests.get(info_url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            return None, f"请求失败，状态码: {response.status_code}"
+        response, error = make_request_with_retry(info_url, headers)
+        if error:
+            return None, error
 
         data = response.json()
         if data.get("code") != 0:
             return None, f"B站API返回错误: {data.get('message')}"
 
-        data = response.json().get("data", {})
+        data = data.get("data", {})
         if not data:
             return None, "未找到视频信息"
 
@@ -233,25 +240,52 @@ def get_video_info(bvid):
             {"key": "发布时间", "value": pubdate},
         ]
         return video_info, None
-    except requests.exceptions.RequestException as e:
+    except Exception as e:
         return None, f"请求失败: {e}"
+
+#获取user_agents池
+def get_random_user_agent():
+    return random.choice(USER_AGENTS)
+
+
+def make_request_with_retry(url, headers, max_retries=3, delay_base=5):
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, headers=headers, timeout=15)
+            data = response.json()
+
+            if data.get('code') == -352:
+                wait_time = delay_base * (attempt + 1) + random.uniform(0, 5)
+                time.sleep(wait_time)
+                continue
+
+            return response, None
+        except Exception as e:
+            if attempt == max_retries - 1:
+                return None, str(e)
+            wait_time = delay_base * (attempt + 1) + random.uniform(0, 5)
+            time.sleep(wait_time)
+
+    return None, f"请求失败，重试{max_retries}次后仍不成功"
 
 
 def get_video_comments(bvid, max_comments=100):
     """获取视频评论 - 改进版"""
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36 Edg/135.0.0.0',
-        'Referer': f'https://www.bilibili.com/video/{bvid}',
-        'Origin': 'https://www.bilibili.com'
-    }
-
     comments = []
     try:
         # 1. 首先获取视频aid(oid)
         video_info_url = f'https://api.bilibili.com/x/web-interface/view?bvid={bvid}'
-        video_response = requests.get(video_info_url, headers=headers, timeout=10)
-        if video_response.status_code != 200:
-            return None, f"获取视频信息失败: {video_response.status_code}"
+        headers = {
+            'User-Agent': get_random_user_agent(),
+            'Referer': f'https://www.bilibili.com/video/{bvid}',
+            'Origin': 'https://www.bilibili.com'
+        }
+
+        time.sleep(2 + random.random())  # 初始延迟
+
+        video_response, error = make_request_with_retry(video_info_url, headers)
+        if error:
+            return None, f"获取视频信息失败: {error}"
 
         video_data = video_response.json()
         if video_data.get('code') != 0:
@@ -263,37 +297,37 @@ def get_video_comments(bvid, max_comments=100):
         page = 1
         last_count = 0
         while len(comments) < max_comments:
+            # 动态延迟 - 根据已获取评论数调整
+            base_delay = 3.0 + (len(comments) / max_comments * 10)
+            time.sleep(base_delay + random.uniform(0, 2))
+
             url = f'https://api.bilibili.com/x/v2/reply/main?next={page}&type=1&oid={aid}&mode=3'
 
-            try:
-                response = requests.get(url, headers=headers, timeout=10)
-                if response.status_code != 200:
-                    return None, f"获取评论失败: HTTP {response.status_code}"
+            response, error = make_request_with_retry(url, headers)
+            if error:
+                return None, error
 
-                data = response.json()
-                if data.get('code') != 0:
-                    return None, f"B站API错误: {data.get('message')}"
+            data = response.json()
+            if data.get('code') == -352:
+                time.sleep(30 + random.uniform(0, 15))
+                continue
 
-                if not data.get('data') or not data['data'].get('replies'):
-                    break  # 没有更多评论
+            if not data.get('data') or not data['data'].get('replies'):
+                break  # 没有更多评论
 
-                for comment in data['data']['replies']:
-                    comments.append(comment['content']['message'])
-                    if len(comments) >= max_comments:
-                        break
-
-                print(f"已获取 {len(comments)}/{max_comments} 条评论")
-
-                # 检查是否还有新评论
-                if last_count == len(comments):
+            for comment in data['data']['replies']:
+                comments.append(comment['content']['message'])
+                if len(comments) >= max_comments:
                     break
-                last_count = len(comments)
 
-                page += 1
-                time.sleep(0.5)  # 适当延迟防止被封
+            print(f"已获取 {len(comments)}/{max_comments} 条评论")
 
-            except Exception as e:
-                return None, f"获取评论出错: {str(e)}"
+            # 检查是否还有新评论
+            if last_count == len(comments):
+                break
+            last_count = len(comments)
+
+            page += 1
 
         return comments[:max_comments], None
 
@@ -669,12 +703,23 @@ def get_comments():
     if not bvid:
         return jsonify({"error": "缺少BV号参数"}), 400
 
-    max_comments = request.args.get("max_comments", 100, type=int)
-    comments, error = get_video_comments(bvid, max_comments)
-    if error:
-        return jsonify({"error": error}), 500
+    try:
+        # 限制最大评论数为50，减少请求压力
+        comments, error = get_video_comments(bvid, max_comments=50)
+        if error:
+            if "频率限制" in error or "352" in error:
+                return jsonify({
+                    "error": "请求过于频繁，请30分钟后再试",
+                    "code": 429
+                }), 429
+            return jsonify({"error": error}), 500
 
-    return jsonify({"comments": comments})
+        return jsonify({
+            "comments": comments,
+            "count": len(comments) if comments else 0
+        })
+    except Exception as e:
+        return jsonify({"error": f"服务器错误: {str(e)}"}), 500
 
 
 @app.route("/analyze", methods=["POST"])
