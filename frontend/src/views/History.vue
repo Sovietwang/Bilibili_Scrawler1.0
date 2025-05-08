@@ -19,9 +19,12 @@
       <!-- 历史记录列表 -->
       <ul class="history-list">
         <li v-for="(item, index) in history" :key="index">
-          <span class="bvid" @click="goToCrawler(item.bvid)">{{ item.bvid }}</span>
+          <div class="video-info" :title="item.title || '无标题'">
+            <span class="bvid" @click="goToCrawler(item.bvid)">{{ item.bvid }}</span>
+            <span class="title">{{ item.title || '无标题' }}</span>
+          </div>
           <span class="timestamp">{{ formatDate(item.query_time) }}</span>
-          <button @click="deleteSingleHistory(item.bvid)" class="delete-single">删除</button>
+          <button @click="deleteSingleHistory(item.id)" class="delete-single">删除</button>
         </li>
       </ul>
 
@@ -127,12 +130,23 @@ export default {
           const response = await fetch(url, {
             method: "DELETE",
           });
-          const data = await response.json();
-          this.$notify.success({
-            title: '成功',
-            message: data.message
-          });
-          this.loadHistory();
+
+          if (response.ok) {
+            // 强制重置分页状态并重新加载数据
+            this.pagination.currentPage = 1;
+            this.pagination.totalItems = 0;
+            this.history = []; // 立即清空当前显示
+
+            this.$notify.success({
+              title: '成功',
+              message: '历史记录已清空'
+            });
+
+            // 重新加载数据以确保同步
+            await this.loadHistory();
+          } else {
+            throw new Error('删除失败');
+          }
         } catch (err) {
           console.error("删除失败:", err);
           this.$notify.error({
@@ -143,10 +157,10 @@ export default {
       }
     },
 
-    async deleteSingleHistory(bvid) {
+    async deleteSingleHistory(historyId) {
       try {
         const user = JSON.parse(localStorage.getItem('user'));
-        let url = `http://127.0.0.1:5000/history/delete/${bvid}`;
+        let url = `http://127.0.0.1:5000/history/delete/${historyId}`;
         if (user) {
           url += `?user_id=${user.id}`;
         }
@@ -155,7 +169,8 @@ export default {
           method: "DELETE"
         });
         if (response.ok) {
-          this.history = this.history.filter(item => item.bvid !== bvid);
+          // 直接从当前列表中移除该项
+          this.history = this.history.filter(item => item.id !== historyId);
           this.pagination.totalItems -= 1;
 
           if (this.history.length === 0 && this.pagination.currentPage > 1) {
@@ -164,7 +179,7 @@ export default {
 
           this.$notify.success({
             title: '成功',
-            message: `已删除 BV 号为 ${bvid} 的历史记录`
+            message: '历史记录已删除'
           });
         } else {
           throw new Error('删除失败');
@@ -266,15 +281,17 @@ ul {
 }
 
 li {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 3fr 2fr auto;
   align-items: center;
+  gap: 10px;
   padding: 12px;
   margin-bottom: 10px;
   background-color: #f8f9fa;
   border-radius: 4px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
+
 
 li:hover {
   background-color: #e9ecef;
@@ -283,8 +300,9 @@ li:hover {
 .bvid {
   font-family: monospace;
   color: #007bff;
-  flex: 1;
-  margin-right: 20px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .timestamp {
@@ -358,5 +376,21 @@ li:hover {
 .login-link {
   color: #1890ff;
   text-decoration: none;
+}
+
+.video-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  /* 允许内容溢出 */
+}
+
+.title {
+  font-size: 0.9em;
+  color: #666;
+  margin-top: 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

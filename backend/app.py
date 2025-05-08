@@ -640,49 +640,47 @@ def delete_history():
         conn.commit()
     return jsonify({"message": "历史记录已清空"}), 200
 
-@app.route("/history/delete/<bvid>", methods=["DELETE"])
-def delete_single_history(bvid):
+@app.route("/history/delete/<int:history_id>", methods=["DELETE"])
+def delete_single_history(history_id):
     """删除单条历史记录"""
     user_id = request.args.get("user_id")
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
             if user_id:
-                cursor.execute("DELETE FROM query_history WHERE bvid = %s AND user_id = %s", (bvid, user_id))
+                cursor.execute("DELETE FROM query_history WHERE id = %s AND user_id = %s", (history_id, user_id))
             else:
-                cursor.execute("DELETE FROM query_history WHERE bvid = %s AND user_id IS NULL", (bvid,))
+                cursor.execute("DELETE FROM query_history WHERE id = %s AND user_id IS NULL", (history_id,))
         conn.commit()
-    return jsonify({"message": f"已删除 BV 号为 {bvid} 的历史记录"}), 200
+    return jsonify({"message": "历史记录已删除"}), 200
 
 
+# 修改历史记录查询API
 @app.route("/history")
 def history():
     page = request.args.get("page", 1, type=int)
     per_page = request.args.get("per_page", 20, type=int)
-    user_id = request.args.get("user_id",type=int)
+    user_id = request.args.get("user_id", type=int)
 
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
             if user_id:
-                cursor.execute("SELECT COUNT(*) as total FROM query_history WHERE user_id = %s", (user_id,))
-            else:
-                cursor.execute("SELECT COUNT(*) as total FROM query_history WHERE user_id IS NULL")
-            total = cursor.fetchone()["total"]
-
-            # 获取分页数据 (添加用户过滤)
-            if user_id:
                 cursor.execute("""
-                                SELECT bvid, query_time FROM query_history
-                                WHERE user_id = %s
-                                ORDER BY query_time DESC
-                                LIMIT %s OFFSET %s
-                            """, (user_id, per_page, (page - 1) * per_page))
+                    SELECT h.id, h.bvid, h.query_time, v.title 
+                    FROM query_history h
+                    LEFT JOIN videos v ON h.bvid = v.bvid
+                    WHERE h.user_id = %s
+                    ORDER BY h.query_time DESC
+                    LIMIT %s OFFSET %s
+                """, (user_id, per_page, (page - 1) * per_page))
             else:
                 cursor.execute("""
-                                SELECT bvid, query_time FROM query_history
-                                WHERE user_id IS NULL
-                                ORDER BY query_time DESC
-                                LIMIT %s OFFSET %s
-                            """, (per_page, (page - 1) * per_page))
+                    SELECT h.id, h.bvid, h.query_time, v.title 
+                    FROM query_history h
+                    LEFT JOIN videos v ON h.bvid = v.bvid
+                    WHERE h.user_id IS NULL
+                    ORDER BY h.query_time DESC
+                    LIMIT %s OFFSET %s
+                """, (per_page, (page - 1) * per_page))
             history = cursor.fetchall()
 
     return jsonify({
@@ -690,8 +688,8 @@ def history():
         "pagination": {
             "page": page,
             "per_page": per_page,
-            "total": total,
-            "pages": (total + per_page - 1) // per_page
+            "total": len(history),
+            "pages": (len(history) + per_page - 1) // per_page
         }
     })
 
