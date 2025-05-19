@@ -509,10 +509,11 @@ def login():
 @app.route("/user/update", methods=["PUT"])
 def update_user():
     """更新用户信息"""
-    data = request.get_json()  # 修改为获取JSON数据
+    data = request.get_json()
     user_id = data.get("user_id")
     new_username = data.get("username")
-    new_password = data.get("password")
+    current_password = data.get("current_password")
+    new_password = data.get("new_password")
 
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
@@ -525,15 +526,27 @@ def update_user():
                 if cursor.fetchone():
                     return jsonify({"error": "用户名已存在"}), 400
 
-                cursor.execute("""
-                    UPDATE users SET username = %s 
-                    WHERE id = %s
-                """, (new_username, user_id))
-
-            # 更新密码
+            # 如果需要修改密码，验证当前密码
             if new_password:
                 cursor.execute("""
+                    SELECT password FROM users
+                    WHERE id = %s
+                """, (user_id,))
+                result = cursor.fetchone()
+
+                if not result or result["password"] != current_password:
+                    return jsonify({"error": "当前密码不正确"}), 400
+
+                # 更新密码
+                cursor.execute("""
                     UPDATE users SET password = %s 
+                    WHERE id = %s
+                """, (new_password, user_id))
+
+            # 更新用户名
+            if new_username:
+                cursor.execute("""
+                    UPDATE users SET username = %s 
                     WHERE id = %s
                 """, (new_password, user_id))
 
@@ -550,7 +563,6 @@ def update_user():
         "message": "更新成功",
         "user": user
     })
-
 
 @app.route("/user/avatar", methods=["POST"])
 def upload_avatar():

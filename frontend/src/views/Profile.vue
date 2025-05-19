@@ -3,57 +3,100 @@
     <h1>个人信息</h1>
 
     <!-- 未登录状态 -->
-    <div v-if="!user" class="auth-forms">
-      <div v-if="showLogin" class="auth-form">
-        <h2>登录</h2>
-        <input v-model="loginUsername" placeholder="用户名">
-        <input v-model="loginPassword" type="password" placeholder="密码">
-        <button @click="handleLogin">登录</button>
-        <p class="switch-text">没有账号？<a @click="switchToRegister">注册新账号</a></p>
-      </div>
+    <!-- 未登录状态 -->
+    <div v-if="!user" class="auth-container">
+      <div class="auth-card">
+        <!-- 登录表单 -->
+        <div v-if="showLogin" class="auth-form">
+          <h2 class="auth-title">用户登录</h2>
+          <div class="form-group">
+            <label for="loginUsername">用户名</label>
+            <input id="loginUsername" v-model="loginUsername" placeholder="请输入用户名" class="form-input">
+          </div>
+          <div class="form-group">
+            <label for="loginPassword">密码</label>
+            <input id="loginPassword" v-model="loginPassword" type="password" placeholder="请输入密码" class="form-input">
+          </div>
+          <button @click="handleLogin" class="primary-btn">登录</button>
+          <p class="switch-text">
+            没有账号？<a @click="switchToRegister" class="switch-link">注册新账号</a>
+          </p>
+        </div>
 
-      <div v-else class="auth-form">
-        <h2>注册</h2>
-        <input v-model="registerUsername" placeholder="用户名">
-        <input v-model="registerPassword" type="password" placeholder="密码">
-        <input v-model="registerPasswordConfirm" type="password" placeholder="确认密码">
-        <button @click="handleRegister">注册</button>
-        <p class="switch-text">已有账号？<a @click="switchToLogin">返回登录</a></p>
+        <!-- 注册表单 -->
+        <div v-else class="auth-form">
+          <h2 class="auth-title">用户注册</h2>
+          <div class="form-group">
+            <label for="registerUsername">用户名</label>
+            <input id="registerUsername" v-model="registerUsername" placeholder="请输入用户名" class="form-input">
+          </div>
+          <div class="form-group">
+            <label for="registerPassword">密码</label>
+            <input id="registerPassword" v-model="registerPassword" type="password" placeholder="请输入密码"
+              class="form-input">
+          </div>
+          <div class="form-group">
+            <label for="registerPasswordConfirm">确认密码</label>
+            <input id="registerPasswordConfirm" v-model="registerPasswordConfirm" type="password" placeholder="请再次输入密码"
+              class="form-input">
+          </div>
+          <button @click="handleRegister" class="primary-btn">注册</button>
+          <p class="switch-text">
+            已有账号？<a @click="switchToLogin" class="switch-link">返回登录</a>
+          </p>
+        </div>
       </div>
     </div>
 
     <!-- 已登录状态 -->
-    <div v-else class="user-info">
-      <div class="avatar-section">
-        <img :src="user.avatar || '/default_avatar.png'" class="avatar">
-        <input type="file" id="avatar-upload" accept="image/*" @change="handleAvatarUpload" style="display: none;">
-        <button @click="triggerAvatarUpload" class="upload-btn">更换头像</button>
-      </div>
-
-      <div class="info-section">
-        <div class="info-item">
-          <label>用户名:</label>
-          <input v-if="editing" v-model="editUsername">
-          <span v-else>{{ user.username }}</span>
+    <div v-else class="profile-container">
+      <div class="profile-card">
+        <div class="avatar-section">
+          <img :src="user.avatar || '/default_avatar.png'" class="avatar">
+          <input type="file" id="avatar-upload" accept="image/*" @change="handleAvatarUpload" style="display: none;">
+          <button @click="triggerAvatarUpload" class="secondary-btn">
+            <i class="icon-upload"></i> 更换头像
+          </button>
         </div>
 
-        <div v-if="showPasswordFields" class="info-item">
-          <label>新密码:</label>
-          <input v-model="newPassword" type="password" placeholder="留空则不修改">
-        </div>
+        <div class="info-section">
+          <div class="info-item">
+            <label>用户名</label>
+            <input v-if="editing" v-model="editUsername" class="form-input">
+            <span v-else>{{ user.username }}</span>
+          </div>
 
-        <div v-if="showPasswordFields" class="info-item">
-          <label>确认密码:</label>
-          <input v-model="newPasswordConfirm" type="password">
-        </div>
+          <div v-if="showPasswordFields" class="info-item">
+            <label>当前密码</label>
+            <input v-model="currentPassword" type="password" placeholder="请输入当前密码" class="form-input">
+          </div>
 
-        <div class="action-buttons">
-          <button v-if="!editing" @click="startEditing" class="edit-btn">编辑资料</button>
-          <template v-else>
-            <button @click="saveProfile" class="save-btn">保存修改</button>
-            <button @click="cancelEditing" class="cancel-btn">取消</button>
-          </template>
-          <button @click="handleLogout" class="logout-btn">退出登录</button>
+          <div v-if="showPasswordFields" class="info-item">
+            <label>新密码</label>
+            <input v-model="newPassword" type="password" placeholder="请输入新密码" class="form-input">
+          </div>
+
+          <div v-if="showPasswordFields" class="info-item">
+            <label>确认新密码</label>
+            <input v-model="newPasswordConfirm" type="password" placeholder="请再次输入新密码" class="form-input">
+          </div>
+
+          <div class="action-buttons">
+            <button v-if="!editing" @click="startEditing" class="primary-btn">
+              <i class="icon-edit"></i> 编辑资料
+            </button>
+            <template v-else>
+              <button @click="saveProfile" class="primary-btn">
+                <i class="icon-save"></i> 保存修改
+              </button>
+              <button @click="cancelEditing" class="secondary-btn">
+                <i class="icon-cancel"></i> 取消
+              </button>
+            </template>
+            <button @click="handleLogout" class="danger-btn">
+              <i class="icon-logout"></i> 退出登录
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -73,6 +116,7 @@ export default {
       registerPasswordConfirm: '',
       editing: false,
       editUsername: '',
+      currentPassword: '',
       newPassword: '',
       newPasswordConfirm: '',
       showPasswordFields: false
@@ -162,17 +206,29 @@ export default {
       this.newPassword = '';
       this.newPasswordConfirm = '';
     },
+    startEditing() {
+      this.editing = true;
+      this.editUsername = this.user.username;
+      this.showPasswordFields = false;
+    },
     async saveProfile() {
       // 验证用户名
       if (!this.editUsername) {
-        alert('用户名不能为空');
+        this.$notify.error({ title: '错误', message: '用户名不能为空' });
         return;
       }
 
-      // 验证密码
-      if (this.newPassword && this.newPassword !== this.newPasswordConfirm) {
-        alert('两次输入的密码不一致');
-        return;
+      // 如果有密码修改，验证密码
+      if (this.showPasswordFields) {
+        if (!this.currentPassword) {
+          this.$notify.error({ title: '错误', message: '请输入当前密码' });
+          return;
+        }
+
+        if (this.newPassword !== this.newPasswordConfirm) {
+          this.$notify.error({ title: '错误', message: '两次输入的新密码不一致' });
+          return;
+        }
       }
 
       try {
@@ -181,8 +237,10 @@ export default {
           username: this.editUsername
         };
 
-        if (this.newPassword) {
-          updateData.password = this.newPassword;
+        // 如果有密码修改，添加密码字段
+        if (this.showPasswordFields) {
+          updateData.current_password = this.currentPassword;
+          updateData.new_password = this.newPassword;
         }
 
         const response = await fetch('http://127.0.0.1:5000/user/update', {
@@ -195,18 +253,22 @@ export default {
 
         const data = await response.json();
         if (data.error) {
-          alert(data.error);
+          this.$notify.error({ title: '错误', message: data.error });
           return;
         }
 
+        // 更新本地存储的用户信息
         this.user.username = this.editUsername;
         localStorage.setItem('user', JSON.stringify(this.user));
+
+        this.$notify.success({ title: '成功', message: '资料更新成功' });
+
         this.editing = false;
+        this.currentPassword = '';
         this.newPassword = '';
         this.newPasswordConfirm = '';
-        alert('资料更新成功');
       } catch (err) {
-        alert('更新失败: ' + err.message);
+        this.$notify.error({ title: '错误', message: '更新失败: ' + err.message });
       }
     },
     triggerAvatarUpload() {
@@ -254,52 +316,134 @@ export default {
 </script>
 
 <style scoped>
+/* 基础样式 */
 .profile-page {
   padding: 20px;
   max-width: 600px;
   margin: 0 auto;
 }
 
-.auth-forms {
-  display: flex;
-  justify-content: center;
-}
-
-.auth-form {
-  width: 100%;
-  max-width: 400px;
-  padding: 20px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background-color: #f9f9f9;
-}
-
-.switch-text {
-  margin-top: 15px;
+.page-title {
+  color: #333;
   text-align: center;
+  margin-bottom: 30px;
+  font-size: 24px;
+  font-weight: 600;
 }
 
-.switch-text a {
+/* 卡片样式 */
+.auth-card, .profile-card {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  padding: 25px;
+  margin-bottom: 20px;
+}
+
+/* 表单样式 */
+.auth-title {
+  color: #333;
+  text-align: center;
+  margin-bottom: 20px;
+  font-size: 20px;
+}
+
+.form-group {
+  margin-bottom: 15px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 5px;
+  color: #666;
+  font-size: 14px;
+}
+
+.form-input {
+  width: 100%;
+  padding: 10px 15px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  transition: border-color 0.3s;
+}
+
+.form-input:focus {
+  border-color: #1890ff;
+  outline: none;
+}
+
+/* 按钮样式 */
+.primary-btn {
+  background-color: #1890ff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+  width: 100%;
+  margin-top: 10px;
+}
+
+.primary-btn:hover {
+  background-color: #40a9ff;
+}
+
+.secondary-btn {
+  background-color: #fff;
+  color: #1890ff;
+  border: 1px solid #1890ff;
+  border-radius: 4px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.secondary-btn:hover {
+  background-color: #e6f7ff;
+}
+
+.danger-btn {
+  background-color: #ff4d4f;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.danger-btn:hover {
+  background-color: #ff7875;
+}
+
+/* 切换链接样式 */
+.switch-text {
+  text-align: center;
+  margin-top: 20px;
+  color: #666;
+}
+
+.switch-link {
   color: #1890ff;
   cursor: pointer;
   text-decoration: none;
 }
 
-.switch-text a:hover {
+.switch-link:hover {
   text-decoration: underline;
 }
 
-.user-info {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-}
-
+/* 头像区域 */
 .avatar-section {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
+  margin-bottom: 20px;
 }
 
 .avatar {
@@ -308,17 +452,10 @@ export default {
   border-radius: 50%;
   object-fit: cover;
   border: 3px solid #1890ff;
+  margin-bottom: 15px;
 }
 
-.upload-btn {
-  padding: 8px 16px;
-  background-color: #1890ff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
+/* 信息区域 */
 .info-section {
   display: flex;
   flex-direction: column;
@@ -333,54 +470,19 @@ export default {
 
 .info-item label {
   font-weight: bold;
+  color: #666;
 }
 
-.info-item input {
-  padding: 8px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-}
-
-.info-item input:disabled {
-  background-color: #f5f5f5;
-  color: #333;
-}
-
+/* 操作按钮 */
 .action-buttons {
   display: flex;
   gap: 10px;
   margin-top: 20px;
+  justify-content: center;
 }
 
-.edit-btn,
-.save-btn {
-  padding: 8px 16px;
-  background-color: #1890ff;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.cancel-btn {
-  padding: 8px 16px;
-  background-color: #f5f5f5;
-  color: #333;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-.logout-btn {
-  padding: 8px 16px;
-  background-color: #ff4d4f;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-}
-
-button:hover {
-  opacity: 0.9;
+/* 图标样式 */
+.icon-upload, .icon-edit, .icon-save, .icon-cancel, .icon-logout {
+  margin-right: 5px;
 }
 </style>
