@@ -26,7 +26,7 @@ CORS(app)
 
 #user_agents池
 USER_AGENTS = [
-    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36 Edg/136.0.0.0"
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.121 Safari/537.36"
 ]
 
 # MySQL 连接配置
@@ -53,6 +53,7 @@ def init_db():
                     username VARCHAR(50) UNIQUE NOT NULL,
                     password VARCHAR(100) NOT NULL,
                     avatar VARCHAR(200) DEFAULT '/default_avatar.png',
+                    role ENUM('user','admin') DEFAULT 'user',
                     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
                 )
             """)
@@ -85,6 +86,14 @@ def init_db():
                     FOREIGN KEY (bvid) REFERENCES videos (bvid)
                 )
             """)
+
+            # 检查是否存在管理员账户
+            cursor.execute("SELECT id FROM users WHERE username = 'admin'")
+            if not cursor.fetchone():
+                cursor.execute("""
+                               INSERT INTO users (username, password, role)
+                               VALUES (%s, %s, %s)
+                           """, ("admin", "admin123", "admin"))
 
         conn.commit()
         
@@ -276,7 +285,7 @@ def get_video_comments(bvid, max_comments=100):
         # 1. 首先获取视频aid(oid)
         video_info_url = f'https://api.bilibili.com/x/web-interface/view?bvid={bvid}'
         headers = {
-            'User-Agent': get_random_user_agent(),
+            'User-Agent': "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
             'Referer': f'https://www.bilibili.com/video/{bvid}',
             'Origin': 'https://www.bilibili.com'
         }
@@ -472,38 +481,150 @@ def static_files(filename):
 # 用户相关路由
 @app.route("/register", methods=["POST"])
 def register():
-    """用户注册"""
     username = request.form.get("username")
     password = request.form.get("password")
+    role = request.form.get("role", "user")  # 默认为普通用户
 
     if not username or not password:
         return jsonify({"error": "用户名和密码不能为空"}), 400
 
     try:
-        register_user(username, password)
+        with get_db_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("""
+                    INSERT INTO users (username, password, role)
+                    VALUES (%s, %s, %s)
+                """, (username, password, role))
+            conn.commit()
         return jsonify({"message": "注册成功"}), 201
     except pymysql.err.IntegrityError:
         return jsonify({"error": "用户名已存在"}), 400
 
-
 @app.route("/login", methods=["POST"])
 def login():
-    """用户登录"""
     username = request.form.get("username")
     password = request.form.get("password")
+    role = request.form.get("role", "user")  # 默认为普通用户
 
-    user = login_user(username, password)
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT id, username, avatar, role FROM users
+                WHERE username = %s AND password = %s AND role = %s
+            """, (username, password, role))
+            user = cursor.fetchone()
+
     if user:
         return jsonify({
             "message": "登录成功",
             "user": {
                 "id": user["id"],
                 "username": user["username"],
-                "avatar": user["avatar"]
+                "avatar": user["avatar"],
+                "role": user["role"]
             }
         }), 200
     else:
-        return jsonify({"error": "用户名或密码错误"}), 401
+        return jsonify({"error": "用户名或密码错误，或角色不匹配"}), 401
+
+
+# 获取所有用户信息
+@app.route("/admin/users", methods=["GET"])
+def get_all_users():
+    # 简单验证管理员权限
+    admin_id = request.args.get("admin_id")
+    if not admin_id:
+        return jsonify({"error": "未授权"}), 401
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT role FROM users WHERE id = %s", (admin_id,))
+            user = cursor.fetchone()
+            if not user or user["role"] != "admin":
+                return jsonify({"error": "权限不足"}), 403
+
+            cursor.execute("""
+                SELECT id, username, avatar, role, created_at 
+                FROM users
+                ORDER BY created_at DESC
+            """)
+            users = cursor.fetchall()
+
+    return jsonify({"users": users})
+
+
+# 管理员更新用户信息
+@app.route("/admin/users/update", methods=["PUT"])
+def admin_update_user():
+    data = request.get_json()
+    admin_id = data.get("admin_id")
+    user_id = data.get("user_id")
+    update_data = data.get("update_data")
+
+    if not admin_id or not user_id or not update_data:
+        return jsonify({"error": "参数不完整"}), 400
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            # 验证管理员权限
+            cursor.execute("SELECT role FROM users WHERE id = %s", (admin_id,))
+            admin = cursor.fetchone()
+            if not admin or admin["role"] != "admin":
+                return jsonify({"error": "权限不足"}), 403
+
+            # 构建更新语句
+            set_clause = []
+            params = []
+            for field, value in update_data.items():
+                if field in ["username", "password", "avatar", "role"]:
+                    set_clause.append(f"{field} = %s")
+                    params.append(value)
+
+            if not set_clause:
+                return jsonify({"error": "无有效更新字段"}), 400
+
+            params.append(user_id)
+            sql = f"UPDATE users SET {', '.join(set_clause)} WHERE id = %s"
+            cursor.execute(sql, params)
+            conn.commit()
+
+            # 返回更新后的用户信息
+            cursor.execute("""
+                SELECT id, username, avatar, role, created_at 
+                FROM users WHERE id = %s
+            """, (user_id,))
+            user = cursor.fetchone()
+
+    return jsonify({
+        "message": "更新成功",
+        "user": user
+    })
+
+@app.route("/admin/users/delete", methods=["DELETE"])
+def admin_delete_user():
+    admin_id = request.args.get("admin_id")
+    user_id = request.args.get("user_id")
+
+    if not admin_id or not user_id:
+        return jsonify({"error": "参数不完整"}), 400
+
+    with get_db_connection() as conn:
+        with conn.cursor() as cursor:
+            # 验证管理员权限
+            cursor.execute("SELECT role FROM users WHERE id = %s", (admin_id,))
+            admin = cursor.fetchone()
+            if not admin or admin["role"] != "admin":
+                return jsonify({"error": "权限不足"}), 403
+
+            # 禁止删除自己
+            if int(admin_id) == int(user_id):
+                return jsonify({"error": "不能删除自己的账户"}), 400
+
+            # 删除用户
+            cursor.execute("DELETE FROM users WHERE id = %s", (user_id,))
+            conn.commit()
+
+    return jsonify({"message": "用户删除成功"})
 
 
 @app.route("/user/update", methods=["PUT"])
@@ -526,12 +647,19 @@ def update_user():
                 if cursor.fetchone():
                     return jsonify({"error": "用户名已存在"}), 400
 
+                # 更新用户名
+                cursor.execute("""
+                    UPDATE users SET username = %s 
+                    WHERE id = %s
+                """, (new_username, user_id))
+
             # 如果需要修改密码，验证当前密码
             if new_password:
+                # 验证当前密码
                 cursor.execute("""
-                    SELECT password FROM users
-                    WHERE id = %s
-                """, (user_id,))
+                                SELECT password FROM users
+                                WHERE id = %s
+                            """, (user_id,))
                 result = cursor.fetchone()
 
                 if not result or result["password"] != current_password:
@@ -539,20 +667,13 @@ def update_user():
 
                 # 更新密码
                 cursor.execute("""
-                    UPDATE users SET password = %s 
-                    WHERE id = %s
-                """, (new_password, user_id))
-
-            # 更新用户名
-            if new_username:
-                cursor.execute("""
-                    UPDATE users SET username = %s 
-                    WHERE id = %s
-                """, (new_password, user_id))
+                                UPDATE users SET password = %s 
+                                WHERE id = %s
+                            """, (new_password, user_id))
 
             # 获取更新后的用户信息
             cursor.execute("""
-                SELECT id, username, avatar FROM users
+                SELECT id, username, avatar, role FROM users
                 WHERE id = %s
             """, (user_id,))
             user = cursor.fetchone()
@@ -563,6 +684,7 @@ def update_user():
         "message": "更新成功",
         "user": user
     })
+
 
 @app.route("/user/avatar", methods=["POST"])
 def upload_avatar():
@@ -670,11 +792,19 @@ def delete_single_history(history_id):
 @app.route("/history")
 def history():
     page = request.args.get("page", 1, type=int)
-    per_page = request.args.get("per_page", 20, type=int)
+    per_page = request.args.get("per_page", 10, type=int)  # 默认每页10条
     user_id = request.args.get("user_id", type=int)
 
     with get_db_connection() as conn:
         with conn.cursor() as cursor:
+            # 先获取总数
+            if user_id:
+                cursor.execute("SELECT COUNT(*) as total FROM query_history WHERE user_id = %s", (user_id,))
+            else:
+                cursor.execute("SELECT COUNT(*) as total FROM query_history WHERE user_id IS NULL")
+            total = cursor.fetchone()['total']
+
+            # 获取分页数据
             if user_id:
                 cursor.execute("""
                     SELECT h.id, h.bvid, h.query_time, v.title 
@@ -700,11 +830,10 @@ def history():
         "pagination": {
             "page": page,
             "per_page": per_page,
-            "total": len(history),
-            "pages": (len(history) + per_page - 1) // per_page
+            "total": total,
+            "pages": (total + per_page - 1) // per_page  # 计算总页数
         }
     })
-
 
 @app.route("/comments", methods=["GET"])
 def get_comments():

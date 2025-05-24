@@ -3,6 +3,7 @@ import HomeView from '../views/History.vue'
 import Crawler from "@/views/Crawler.vue";
 import History from "@/views/History.vue";
 import Profile from "@/views/Profile.vue";
+import Admin from "@/views/Admin.vue"
 
 
 const router = createRouter({
@@ -26,6 +27,11 @@ const router = createRouter({
       path: "/profile",
       name: "Profile",
       component: Profile,
+    },
+    {
+      path: "/admin",
+      name: "Admin",
+      component: Admin,
     },
     // {
     //   path: '/about',

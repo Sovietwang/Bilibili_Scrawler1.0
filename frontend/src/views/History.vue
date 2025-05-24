@@ -74,18 +74,16 @@ export default {
   },
   methods: {
     async loadHistory() {
-
-      if (!this.user) {
-        this.history = [];
-        return;
-      }
-
       this.historyLoading = true;
       try {
         const response = await fetch(
-          `http://127.0.0.1:5000/history?page=${this.pagination.currentPage}&per_page=${this.pagination.itemsPerPage}&user_id=${this.user.id}`
+          `http://127.0.0.1:5000/history?page=${this.pagination.currentPage}&per_page=${this.pagination.itemsPerPage}&user_id=${this.user?.id || ''}`
         );
         const data = await response.json();
+
+        if (data.error) {
+          throw new Error(data.error);
+        }
 
         this.history = data.history || [];
 
